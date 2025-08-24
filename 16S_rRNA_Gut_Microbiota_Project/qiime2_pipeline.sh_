@@ -1,0 +1,116 @@
+#!/bin/bash
+# QIIME 2 Workflow: Gut Microbiota 16S rRNA Analysis
+# Author: Reham Wael
+# Last Updated: July 2025
+
+# Activate QIIME 2 environment
+# conda activate qiime2-amplicon-2024.10
+
+# Step 1: Summarize demultiplexed reads
+qiime demux summarize \
+  --i-data demux-single-end.qza \
+  --o-visualization demux-summary.qzv
+
+# Step 2: DADA2 denoising
+qiime dada2 denoise-single \
+  --i-demultiplexed-seqs demux-single-end.qza \
+  --p-trim-left 0 \
+  --p-trunc-len 250 \
+  --o-representative-sequences rep-seqs.qza \
+  --o-table table.qza \
+  --o-denoising-stats denoising-stats.qza
+
+# Step 3: Denoising stats
+qiime metadata tabulate \
+  --m-input-file denoising-stats.qza \
+  --o-visualization denoising-stats.qzv
+
+# Step 4: Summarize features
+qiime feature-table summarize \
+  --i-table table.qza \
+  --o-visualization table.qzv \
+  --m-sample-metadata-file sample-metadata-mod.tsv
+
+qiime feature-table tabulate-seqs \
+  --i-data rep-seqs.qza \
+  --o-visualization rep-seqs.qzv
+
+# Step 5: Phylogenetic tree
+qiime phylogeny align-to-tree-mafft-fasttree \
+  --i-sequences rep-seqs.qza \
+  --o-alignment aligned-rep-seqs.qza \
+  --o-masked-alignment masked-aligned-rep-seqs.qza \
+  --o-tree unrooted-tree.qza \
+  --o-rooted-tree rooted-tree.qza
+
+# Step 6: Core diversity metrics
+qiime diversity core-metrics-phylogenetic \
+  --i-phylogeny rooted-tree.qza \
+  --i-table table.qza \
+  --p-sampling-depth 8000 \
+  --m-metadata-file sample-metadata-mod.tsv \
+  --output-dir core-metrics-results
+
+# Step 7: Alpha diversity significance
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/faith_pd_vector.qza \
+  --m-metadata-file sample-metadata-mod.tsv \
+  --o-visualization core-metrics-results/faith-pd-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/observed_features_vector.qza \
+  --m-metadata-file sample-metadata-mod.tsv \
+  --o-visualization core-metrics-results/observed-features-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/shannon_vector.qza \
+  --m-metadata-file sample-metadata-mod.tsv \
+  --o-visualization core-metrics-results/shannon-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/evenness_vector.qza \
+  --m-metadata-file sample-metadata-mod.tsv \
+  --o-visualization core-metrics-results/evenness-group-significance.qzv
+
+# Step 8: Chao1 metric
+qiime diversity alpha \
+  --i-table table.qza \
+  --p-metric chao1 \
+  --o-alpha-diversity core-metrics-results/chao1_vector.qza
+
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/chao1_vector.qza \
+  --m-metadata-file sample-metadata-mod.tsv \
+  --o-visualization core-metrics-results/chao1-group-significance.qzv
+
+# Step 9: Taxonomic classification
+qiime feature-classifier classify-sklearn \
+  --i-classifier gg-13-8-99-515-806-nb-classifier.qza \
+  --i-reads rep-seqs.qza \
+  --o-classification taxonomy.qza
+
+# Step 10: Taxa bar plots
+qiime taxa barplot \
+  --i-table table.qza \
+  --i-taxonomy taxonomy.qza \
+  --m-metadata-file sample-metadata-mod.tsv \
+  --o-visualization taxa-bar-plots.qzv
+
+# Step 11: Beta diversity significance
+qiime diversity beta-group-significance \
+  --i-distance-matrix core-metrics-results/unweighted_unifrac_distance_matrix.qza \
+  --m-metadata-file sample-metadata-mod.tsv \
+  --m-metadata-column Groups \
+  --p-method permanova \
+  --p-pairwise \
+  --p-permutations 999 \
+  --o-visualization core-metrics-results/unweighted-unifrac-significance.qzv
+
+# Step 12: Export to external tools (optional)
+qiime tools export \
+  --input-path table.qza \
+  --output-path exported-feature-table
+
+qiime tools export \
+  --input-path taxonomy.qza \
+  --output-path exported-taxonomy
